@@ -24,7 +24,7 @@
 #           * question_tag: which is a tag to cluster questions together, a student might do well on certain tags,
 #               as opposed to other tags
 #           * we could measure how many questions a particular student has got right so far 
-            
+
 import sys
 from pathlib import Path
 import pandas as pd
@@ -32,6 +32,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pylab import rcParams
 from sklearn.linear_model import LogisticRegression
+from sklearn.neural_network import MLPClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.gaussian_process import GaussianProcessClassifier
+from sklearn.gaussian_process.kernels import RBF
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 from sklearn.metrics import mean_absolute_error
 from sklearn.metrics import r2_score
 from sklearn.metrics import accuracy_score
@@ -44,8 +53,20 @@ rcParams['figure.figsize'] = 7,7
 
 # Classification models
 class_models = {
-    'logr'  : LogisticRegression(random_state=10)
+    'logr' : LogisticRegression(random_state=10, warm_start=True),
+    'dt': DecisionTreeClassifier(max_depth=5),
+    'rf': RandomForestClassifier(max_depth=5, n_estimators=10, max_features=1, warm_start=True)
 }
+'''
+    'knc': KNeighborsClassifier(3),
+    'svc': SVC(kernel="linear", C=0.025),
+    'svc_g': SVC(gamma=2, C=1),
+    'gr': GaussianProcessClassifier(1.0 * RBF(1.0)),
+    'mlp': MLPClassifier(alpha=1, max_iter=1000),
+    'ada': AdaBoostClassifier(),
+    'gnb': GaussianNB(),
+    'qda': QuadraticDiscriminantAnalysis()
+'''
 
 # Classification output feature
 class_output = 'answered_correctly'
@@ -65,14 +86,15 @@ def cor_selector(X, y,num_feats):
     cor_feature = X.iloc[:,np.argsort(np.abs(cor_list))[-num_feats:]].columns.tolist()
     return cor_feature, cor_list
 
-# function to plot bar charts which demonstrate the correlation cofficient values produed
-# by each individual feature 
-def plot_feat_corr_bar(features, coffs, output):
-    plt.bar(features, coffs, width=0.7)
-    plt.title('Feature Correlation Coefficient plot - output: '+ output)
-    plt.xlabel('Features', fontsize=1)
-    plt.ylabel('Correlation Coefficient', fontsize=8)
-    plt.xticks(rotation=90)
+# function to plot auc per epoch for each classifier 
+def plot_auc_per_classifier(epochs, results_auc):
+    for key, value in results_auc.items():
+        plt.plot(epochs, value, label=key)
+    plt.title('Testing AUC socres classifier^-1 epoch^-1')
+    plt.xlabel('Percentage of data used to train/test out of entire dataset', fontsize=1)
+    plt.ylabel('AUC', fontsize=8)
+    #plt.xticks(rotation=90)
+    plt.legend()
 
     plt.show()
     plt.clf()
@@ -94,9 +116,9 @@ def plot_all_metric_all_feat_combos(mae, metric, all_feats, models, output):
     plt.show()
 
 # function to train the different models and plot their testing performance
-def train_and_eval(X, y):
+def train_and_eval(X, y, i, results_auc):
     # Train/test split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42, shuffle=True)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, shuffle=True)
     
     # cycle through different classifiers
     for key, value in class_models.items():
@@ -107,15 +129,20 @@ def train_and_eval(X, y):
         preds = model.predict(X_test)
 
         ta = accuracy_score(y_test, preds)
-        print(f'{key} test accuracy = {ta}')
+        print(f'Epoch {i}: {key} test accuracy = {ta}')
 
         f1 = f1_score(y_test, preds, average='weighted')
-        print(f'{key} test F1 = {f1}')
+        print(f'Epoch {i}: {key} test F1 = {f1}')
 
-        # get raw prob scores for auc
-        probs = model.decision_function(X_test)
-        auc = roc_auc_score(y_test, probs)
-        print(f'{key} test auc = {auc}')
+        # get raw prob scores for auc 
+        probs = model.predict_proba(X_test)
+        auc = roc_auc_score(y_test, probs[:,1])
+        if key in results_auc:
+            results_auc[key].append(auc)
+        else:
+            results_auc[key] = [auc]
+        print(f'Epoch {i}: {key} test auc = {auc}')
+    return results_auc
 
 def preprocess_df(df_data):
     # remove rows with NaN (missing) values
@@ -139,15 +166,23 @@ def preprocess_df(df_data):
 def main():
     # Load the data
     print('Loading data...')
-    df_data = pd.read_csv(sys.argv[1])
 
-    # Preprocess data
-    print('Preprocessing data...')
-    X, y = preprocess_df(df_data)
+    results_auc = {}
+    epochs = range(1,23)
 
-    # Train and evaluate models for regression task
-    print('Training and Evaluating models...')
-    train_and_eval(X, y)
+    for i in epochs:
+        df_data = pd.read_csv('data/train_part_'+str(i)+'.csv')
+
+        # Preprocess data
+        print('Preprocessing data...')
+        X, y = preprocess_df(df_data)
+
+        # Train and evaluate models for regression task
+        print('Training and Evaluating models...')
+        results_auc = train_and_eval(X, y, i, results_auc)
+        #break
+    
+    plot_auc_per_classifier(epochs, results_auc)
 
 # Start of program
 main()
