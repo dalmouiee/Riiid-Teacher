@@ -91,9 +91,8 @@ def plot_auc_per_classifier(epochs, results_auc):
     for key, value in results_auc.items():
         plt.plot(epochs, value, label=key)
     plt.title('Testing AUC socres classifier^-1 epoch^-1')
-    plt.xlabel('Percentage of data used to train/test out of entire dataset', fontsize=1)
+    plt.xlabel('Epoch', fontsize=1)
     plt.ylabel('AUC', fontsize=8)
-    #plt.xticks(rotation=90)
     plt.legend()
 
     plt.show()
@@ -116,7 +115,7 @@ def plot_all_metric_all_feat_combos(mae, metric, all_feats, models, output):
     plt.show()
 
 # function to train the different models and plot their testing performance
-def train_and_eval(X, y, i, results_auc):
+def train_and_eval(X, y, ep, sub_ep, results_auc):
     # Train/test split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, shuffle=True)
     
@@ -125,23 +124,24 @@ def train_and_eval(X, y, i, results_auc):
         # train model
         model = value.fit(X_train, y_train)
 
-        # evaluate model
-        preds = model.predict(X_test)
+        if sub_ep == 102:
+            # evaluate model on the last batch of the epoch only
+            preds = model.predict(X_test)
 
-        ta = accuracy_score(y_test, preds)
-        print(f'Epoch {i}: {key} test accuracy = {ta}')
+            ta = accuracy_score(y_test, preds)
+            print(f'Epoch: {ep}, sub-epoch: {sub_ep}, {key} test accuracy = {ta}')
 
-        f1 = f1_score(y_test, preds, average='weighted')
-        print(f'Epoch {i}: {key} test F1 = {f1}')
+            f1 = f1_score(y_test, preds, average='weighted')
+            print(f'Epoch: {ep}, sub-epoch: {sub_ep}, {key} test F1 = {f1}')
 
-        # get raw prob scores for auc 
-        probs = model.predict_proba(X_test)
-        auc = roc_auc_score(y_test, probs[:,1])
-        if key in results_auc:
-            results_auc[key].append(auc)
-        else:
-            results_auc[key] = [auc]
-        print(f'Epoch {i}: {key} test auc = {auc}')
+            # get raw prob scores for auc 
+            probs = model.predict_proba(X_test)
+            auc = roc_auc_score(y_test, probs[:,1])
+            if key in results_auc:
+                results_auc[key].append(auc)
+            else:
+                results_auc[key] = [auc]
+            print(f'Epoch: {ep}, sub-epoch: {sub_ep}, {key} test auc = {auc}')
     return results_auc
 
 def preprocess_df(df_data):
@@ -168,20 +168,22 @@ def main():
     print('Loading data...')
 
     results_auc = {}
-    epochs = range(1,23)
+    epochs = range(1,11)
+    sub_epochs = range(1, 103)
 
-    for i in epochs:
-        df_data = pd.read_csv('data/train_part_'+str(i)+'.csv')
+    for ep in epochs:
+        for sub_ep in sub_epochs:
+            df_data = pd.read_csv('data/train_part_'+str(sub_ep)+'.csv')
 
-        # Preprocess data
-        print('Preprocessing data...')
-        X, y = preprocess_df(df_data)
+            # Preprocess data
+            #print('Preprocessing data...')
+            X, y = preprocess_df(df_data)
 
-        # Train and evaluate models for regression task
-        print('Training and Evaluating models...')
-        results_auc = train_and_eval(X, y, i, results_auc)
-        #break
-    
+            # Train and evaluate models for regression task
+            #print('Training and Evaluating models...')
+            results_auc = train_and_eval(X, y, ep, sub_ep, results_auc)
+            print(f'Epoch: {ep}, sub-epoch: {sub_ep}')
+
     plot_auc_per_classifier(epochs, results_auc)
 
 # Start of program
