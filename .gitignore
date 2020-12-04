@@ -1,1 +1,6 @@
 *.csv
+lib/
+bin/
+pyvenv.cfg
+*.sw[o|p]
+.DS_Store
